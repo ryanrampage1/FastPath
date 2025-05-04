@@ -7,6 +7,7 @@
 
 import Foundation
 import ComposableArchitecture
+import ActivityKit
 
 @Reducer
 struct FastingFeature {
@@ -19,6 +20,8 @@ struct FastingFeature {
         var currentElapsedTime: TimeInterval = 0
         var fastingGoal: FastingGoal?
         var showingGoalPicker: Bool = false
+        var liveActivityEnabled: Bool = true
+        var hasActiveLiveActivity: Bool = false
         
         var isFasting: Bool {
             activeRecord != nil
@@ -50,6 +53,7 @@ struct FastingFeature {
         case selectPredefinedGoal(FastingGoal)
         case setCustomGoal(TimeInterval)
         case clearGoal
+        case toggleLiveActivity(Bool)
         
         // Internal actions
         case timerTick
@@ -61,6 +65,9 @@ struct FastingFeature {
         case recordDeleted(UUID)
         case fastingGoalLoaded(FastingGoal?)
         case fastingGoalSaved(FastingGoal?)
+        case startLiveActivity(FastingRecord, FastingGoal)
+        case updateLiveActivity(TimeInterval, TimeInterval, Bool)
+        case stopLiveActivity
         
         // Navigation
         case showHistory
@@ -119,6 +126,11 @@ struct FastingFeature {
                     try await databaseClient.save(newRecord)
                     await send(.fastingRecordSaved(newRecord))
                     
+                    // Start Live Activity if goal is set and Live Activities are enabled
+                    if let goal = state.fastingGoal, state.liveActivityEnabled {
+                        await send(.startLiveActivity(newRecord, goal))
+                    }
+                    
                     // Start timer
                     for await _ in self.clock.timer(interval: .seconds(1)) {
                         await send(.timerTick)
@@ -133,6 +145,11 @@ struct FastingFeature {
                 return .run { send in
                     try await databaseClient.update(record)
                     await send(.fastingStopped(record))
+                    
+                    // Stop Live Activity if one is active
+                    if state.hasActiveLiveActivity {
+                        await send(.stopLiveActivity)
+                    }
                     
                     // Refresh history
                     let history = await databaseClient.getAllRecords()
@@ -157,6 +174,19 @@ struct FastingFeature {
             case .timerTick:
                 guard let startTime = state.activeRecord?.startTime else { return .none }
                 state.currentElapsedTime = Date().timeIntervalSince(startTime)
+                
+                // Update Live Activity if one is active and a goal is set
+                if state.hasActiveLiveActivity, let goal = state.fastingGoal {
+                    let remainingTime = state.remainingTimeToGoal ?? 0
+                    let goalReached = state.hasReachedGoal
+                    
+                    return .send(.updateLiveActivity(
+                        state.currentElapsedTime,
+                        remainingTime,
+                        goalReached
+                    ))
+                }
+                
                 return .none
                 
             case .historyButtonTapped:
@@ -216,6 +246,55 @@ struct FastingFeature {
             case .fastingGoalSaved:
                 // Nothing to do here, state is already updated
                 return .none
+                
+            case .toggleLiveActivity(let enabled):
+                state.liveActivityEnabled = enabled
+                
+                // If disabling and there's an active Live Activity, stop it
+                if !enabled && state.hasActiveLiveActivity {
+                    return .send(.stopLiveActivity)
+                }
+                
+                // If enabling and there's an active fast with a goal, start a Live Activity
+                if enabled, let record = state.activeRecord, let goal = state.fastingGoal {
+                    return .send(.startLiveActivity(record, goal))
+                }
+                
+                return .none
+                
+            case let .startLiveActivity(record, goal):
+                // Only proceed if Live Activities are enabled and supported
+                guard state.liveActivityEnabled, ActivityAuthorizationInfo().areActivitiesEnabled else {
+                    return .none
+                }
+                
+                return .run { _ in
+                    let success = LiveActivityService.shared.startFastingActivity(
+                        fastId: record.id,
+                        startTime: record.startTime,
+                        goalDuration: goal.targetDuration,
+                        goalName: goal.name
+                    )
+                    
+                    if success {
+                        await MainActor.run { state.hasActiveLiveActivity = true }
+                    }
+                }
+                
+            case let .updateLiveActivity(elapsedTime, remainingTime, goalReached):
+                return .run { _ in
+                    LiveActivityService.shared.updateActivity(
+                        elapsedTime: elapsedTime,
+                        remainingTime: remainingTime,
+                        goalReached: goalReached
+                    )
+                }
+                
+            case .stopLiveActivity:
+                state.hasActiveLiveActivity = false
+                return .run { _ in
+                    LiveActivityService.shared.stopCurrentActivity()
+                }
                 
             case .showHistory:
                 // This will be handled by the parent reducer for navigation

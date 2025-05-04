@@ -7,6 +7,7 @@
 
 import SwiftUI
 import ComposableArchitecture
+import WidgetKit
 
 @main
 struct FastPathApp: App {
@@ -14,6 +15,16 @@ struct FastPathApp: App {
         initialState: AppFeature.State(),
         reducer: { AppFeature() }
     )
+    
+    init() {
+        // Register for Live Activities if available
+        #if canImport(ActivityKit)
+        if #available(iOS 16.1, *) {
+            // Ensure WidgetKit is aware of our Live Activity
+            WidgetCenter.shared.reloadAllTimelines()
+        }
+        #endif
+    }
     
     var body: some Scene {
         WindowGroup {
