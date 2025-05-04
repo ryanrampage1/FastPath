@@ -6,7 +6,6 @@
 //
 
 import Foundation
-import StructuredQueries
 
 /// Represents a single fasting record with start and end times
 struct FastingRecord: Identifiable, Equatable, Codable {
@@ -30,12 +29,4 @@ struct FastingRecord: Identifiable, Equatable, Codable {
     }
 }
 
-// Extension for Swift Structured Queries compatibility
-extension FastingRecord: Queryable {
-    static let schema = Schema(
-        "fasting_records",
-        id: Column("id", .uuid),
-        Column("start_time", .date),
-        Column("end_time", .date, nullable: true)
-    )
-}
+

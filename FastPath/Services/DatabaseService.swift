@@ -6,42 +6,52 @@
 //
 
 import Foundation
-import StructuredQueries
 
 /// Service for handling database operations for fasting records
-actor DatabaseService {
-    private let database: Database
+class DatabaseService {
+    private let userDefaults = UserDefaults.standard
+    private let fastingRecordsKey = "fastingRecords"
     
-    init() async throws {
-        // Initialize the database
-        let url = try await URL.documentsDirectory.appending(path: "fastpath.db")
-        self.database = try await Database(url: url)
-        
-        // Create the table if it doesn't exist
-        try await database.create(table: FastingRecord.self, ifNotExists: true)
-    }
+    init() {}
+    
+    // Singleton instance
+    static let shared = DatabaseService()
     
     /// Save a fasting record to the database
     func save(_ record: FastingRecord) async throws {
-        try await database.insert(record)
+        var records = await getAllRecords()
+        records.append(record)
+        saveAllRecords(records)
     }
     
     /// Update an existing fasting record
     func update(_ record: FastingRecord) async throws {
-        try await database.update(record)
+        var records = await getAllRecords()
+        if let index = records.firstIndex(where: { $0.id == record.id }) {
+            records[index] = record
+            saveAllRecords(records)
+        }
     }
     
     /// Get all fasting records, ordered by start time (most recent first)
-    func getAllRecords() async throws -> [FastingRecord] {
-        try await database.select(FastingRecord.self)
-            .order(by: .desc(FastingRecord.schema["start_time"]))
-            .all()
+    func getAllRecords() async -> [FastingRecord] {
+        guard let data = userDefaults.data(forKey: fastingRecordsKey),
+              let records = try? JSONDecoder().decode([FastingRecord].self, from: data) else {
+            return []
+        }
+        return records.sorted(by: { $0.startTime > $1.startTime })
     }
     
     /// Get the most recent active fasting record (if any)
-    func getActiveRecord() async throws -> FastingRecord? {
-        try await database.select(FastingRecord.self)
-            .where(FastingRecord.schema["end_time"].isNull)
-            .first()
+    func getActiveRecord() async -> FastingRecord? {
+        let records = await getAllRecords()
+        return records.first(where: { $0.endTime == nil })
+    }
+    
+    /// Private helper to save all records
+    private func saveAllRecords(_ records: [FastingRecord]) {
+        if let data = try? JSONEncoder().encode(records) {
+            userDefaults.set(data, forKey: fastingRecordsKey)
+        }
     }
 }

@@ -57,11 +57,11 @@ struct FastingFeature {
                 state.isLoading = true
                 return .run { send in
                     // Load active record
-                    let activeRecord = try await databaseClient.getActiveRecord()
+                    let activeRecord = await databaseClient.getActiveRecord()
                     await send(.activeRecordLoaded(activeRecord))
                     
                     // Load history
-                    let history = try await databaseClient.getAllRecords()
+                    let history = await databaseClient.getAllRecords()
                     await send(.fastingHistoryLoaded(history))
                 }
                 
@@ -108,7 +108,7 @@ struct FastingFeature {
                     await send(.fastingStopped(record))
                     
                     // Refresh history
-                    let history = try await databaseClient.getAllRecords()
+                    let history = await databaseClient.getAllRecords()
                     await send(.fastingHistoryLoaded(history))
                 }
                 
@@ -157,25 +157,21 @@ extension DependencyValues {
 struct DatabaseClient {
     var save: @Sendable (FastingRecord) async throws -> Void
     var update: @Sendable (FastingRecord) async throws -> Void
-    var getAllRecords: @Sendable () async throws -> [FastingRecord]
-    var getActiveRecord: @Sendable () async throws -> FastingRecord?
+    var getAllRecords: @Sendable () async -> [FastingRecord]
+    var getActiveRecord: @Sendable () async -> FastingRecord?
     
     static let live = Self(
         save: { record in
-            let service = try await DatabaseService()
-            try await service.save(record)
+            try await DatabaseService.shared.save(record)
         },
         update: { record in
-            let service = try await DatabaseService()
-            try await service.update(record)
+            try await DatabaseService.shared.update(record)
         },
         getAllRecords: {
-            let service = try await DatabaseService()
-            return try await service.getAllRecords()
+            await DatabaseService.shared.getAllRecords()
         },
         getActiveRecord: {
-            let service = try await DatabaseService()
-            return try await service.getActiveRecord()
+            await DatabaseService.shared.getActiveRecord()
         }
     )
 }
