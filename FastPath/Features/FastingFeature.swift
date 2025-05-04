@@ -68,6 +68,7 @@ struct FastingFeature {
         case startLiveActivity(FastingRecord, FastingGoal)
         case updateLiveActivity(TimeInterval, TimeInterval, Bool)
         case stopLiveActivity
+        case setLiveActivityActive(Bool) // New action for updating Live Activity state
         
         // Navigation
         case showHistory
@@ -268,7 +269,7 @@ struct FastingFeature {
                     return .none
                 }
                 
-                return .run { _ in
+                return .run { send in
                     let success = LiveActivityService.shared.startFastingActivity(
                         fastId: record.id,
                         startTime: record.startTime,
@@ -276,8 +277,9 @@ struct FastingFeature {
                         goalName: goal.name
                     )
                     
+                    // If successful, send an action to update the state
                     if success {
-                        await MainActor.run { state.hasActiveLiveActivity = true }
+                        await send(.setLiveActivityActive(true))
                     }
                 }
                 
@@ -295,6 +297,10 @@ struct FastingFeature {
                 return .run { _ in
                     LiveActivityService.shared.stopCurrentActivity()
                 }
+                
+            case let .setLiveActivityActive(isActive):
+                state.hasActiveLiveActivity = isActive
+                return .none
                 
             case .showHistory:
                 // This will be handled by the parent reducer for navigation
