@@ -17,9 +17,23 @@ struct FastingFeature {
         var fastingHistory: [FastingRecord] = []
         var isLoading: Bool = false
         var currentElapsedTime: TimeInterval = 0
+        var fastingGoal: FastingGoal?
+        var showingGoalPicker: Bool = false
         
         var isFasting: Bool {
             activeRecord != nil
+        }
+        
+        var remainingTimeToGoal: TimeInterval? {
+            guard let goal = fastingGoal, isFasting else { return nil }
+            let goalDuration = goal.targetDuration
+            let remainingTime = goalDuration - currentElapsedTime
+            return remainingTime > 0 ? remainingTime : 0
+        }
+        
+        var hasReachedGoal: Bool {
+            guard let remainingTime = remainingTimeToGoal else { return false }
+            return remainingTime == 0
         }
     }
     
@@ -31,6 +45,11 @@ struct FastingFeature {
         case stopFastButtonTapped
         case historyButtonTapped
         case deleteRecordButtonTapped(UUID)
+        case setGoalButtonTapped
+        case goalPickerDismissed
+        case selectPredefinedGoal(FastingGoal)
+        case setCustomGoal(TimeInterval)
+        case clearGoal
         
         // Internal actions
         case timerTick
@@ -40,6 +59,8 @@ struct FastingFeature {
         case fastingRecordSaved(FastingRecord)
         case fastingStopped(FastingRecord)
         case recordDeleted(UUID)
+        case fastingGoalLoaded(FastingGoal?)
+        case fastingGoalSaved(FastingGoal?)
         
         // Navigation
         case showHistory
@@ -65,6 +86,10 @@ struct FastingFeature {
                     // Load history
                     let history = await databaseClient.getAllRecords()
                     await send(.fastingHistoryLoaded(history))
+                    
+                    // Load fasting goal
+                    let goal = await databaseClient.getGoal()
+                    await send(.fastingGoalLoaded(goal))
                 }
                 
             case let .activeRecordLoaded(record):
@@ -152,6 +177,46 @@ struct FastingFeature {
                 state.fastingHistory.removeAll(where: { $0.id == recordId })
                 return .none
                 
+            case .fastingGoalLoaded(let goal):
+                state.fastingGoal = goal
+                return .none
+                
+            case .setGoalButtonTapped:
+                state.showingGoalPicker = true
+                return .none
+                
+            case .goalPickerDismissed:
+                state.showingGoalPicker = false
+                return .none
+                
+            case .selectPredefinedGoal(let goal):
+                state.fastingGoal = goal
+                state.showingGoalPicker = false
+                return .run { send in
+                    await databaseClient.saveGoal(goal)
+                    await send(.fastingGoalSaved(goal))
+                }
+                
+            case .setCustomGoal(let duration):
+                let customGoal = FastingGoal(targetDuration: duration, name: "Custom Goal")
+                state.fastingGoal = customGoal
+                state.showingGoalPicker = false
+                return .run { send in
+                    await databaseClient.saveGoal(customGoal)
+                    await send(.fastingGoalSaved(customGoal))
+                }
+                
+            case .clearGoal:
+                state.fastingGoal = nil
+                return .run { send in
+                    await databaseClient.saveGoal(nil)
+                    await send(.fastingGoalSaved(nil))
+                }
+                
+            case .fastingGoalSaved:
+                // Nothing to do here, state is already updated
+                return .none
+                
             case .showHistory:
                 // This will be handled by the parent reducer for navigation
                 return .none
@@ -177,6 +242,8 @@ struct DatabaseClient {
     var delete: @Sendable (UUID) async -> Void
     var getAllRecords: @Sendable () async -> [FastingRecord]
     var getActiveRecord: @Sendable () async -> FastingRecord?
+    var saveGoal: @Sendable (FastingGoal?) async -> Void
+    var getGoal: @Sendable () async -> FastingGoal?
     
     static let live = Self(
         save: { record in
@@ -193,6 +260,12 @@ struct DatabaseClient {
         },
         getActiveRecord: {
             await DatabaseService.shared.getActiveRecord()
+        },
+        saveGoal: { goal in
+            await DatabaseService.shared.saveGoal(goal)
+        },
+        getGoal: {
+            await DatabaseService.shared.getGoal()
         }
     )
 }
@@ -205,6 +278,8 @@ extension DatabaseClient: DependencyKey {
         update: { _ in },
         delete: { _ in },
         getAllRecords: { [] },
-        getActiveRecord: { nil }
+        getActiveRecord: { nil },
+        saveGoal: { _ in },
+        getGoal: { nil }
     )
 }

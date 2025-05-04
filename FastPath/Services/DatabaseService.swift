@@ -11,6 +11,7 @@ import Foundation
 class DatabaseService {
     private let userDefaults = UserDefaults.standard
     private let fastingRecordsKey = "fastingRecords"
+    private let fastingGoalKey = "fastingGoal"
     
     init() {}
     
@@ -60,5 +61,24 @@ class DatabaseService {
         if let data = try? JSONEncoder().encode(records) {
             userDefaults.set(data, forKey: fastingRecordsKey)
         }
+    }
+    
+    /// Save a fasting goal
+    func saveGoal(_ goal: FastingGoal?) async {
+        if let goal = goal, let data = try? JSONEncoder().encode(goal) {
+            userDefaults.set(data, forKey: fastingGoalKey)
+        } else {
+            // If goal is nil, remove the saved goal
+            userDefaults.removeObject(forKey: fastingGoalKey)
+        }
+    }
+    
+    /// Get the saved fasting goal (if any)
+    func getGoal() async -> FastingGoal? {
+        guard let data = userDefaults.data(forKey: fastingGoalKey),
+              let goal = try? JSONDecoder().decode(FastingGoal.self, from: data) else {
+            return nil
+        }
+        return goal
     }
 }

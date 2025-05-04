@@ -32,6 +32,26 @@ struct FastingView: View {
                         .foregroundColor(viewStore.isFasting ? .primary : .secondary)
                         .monospacedDigit()
                         .frame(height: 70)
+                    
+                    // Goal countdown display
+                    if viewStore.isFasting, let goal = viewStore.fastingGoal {
+                        VStack(spacing: 4) {
+                            if viewStore.hasReachedGoal {
+                                Text("Goal Reached! 🎉")
+                                    .font(.headline)
+                                    .foregroundColor(.green)
+                            } else if let remainingTime = viewStore.remainingTimeToGoal {
+                                Text("Goal: \(formatDuration(goal.targetDuration))")
+                                    .font(.subheadline)
+                                    .foregroundColor(.secondary)
+                                
+                                Text("Remaining: \(formatTimeInterval(remainingTime))")
+                                    .font(.headline)
+                                    .foregroundColor(.orange)
+                            }
+                        }
+                        .padding(.top, 8)
+                    }
                 }
                 .padding()
                 .frame(maxWidth: .infinity)
@@ -77,21 +97,37 @@ struct FastingView: View {
                     .padding(.horizontal)
                 }
                 
-                // History button
-                Button(action: {
-                    viewStore.send(.historyButtonTapped)
-                }) {
-                    HStack {
-                        Image(systemName: "clock.arrow.circlepath")
-                        Text("Fasting History")
+                // Goal and History buttons
+                HStack(spacing: 20) {
+                    Button(action: {
+                        viewStore.send(.setGoalButtonTapped)
+                    }) {
+                        HStack {
+                            Image(systemName: "target")
+                            Text(viewStore.fastingGoal != nil ? "Change Goal" : "Set Goal")
+                        }
+                        .font(.headline)
+                        .foregroundColor(.purple)
                     }
-                    .font(.headline)
-                    .foregroundColor(.blue)
+                    
+                    Button(action: {
+                        viewStore.send(.historyButtonTapped)
+                    }) {
+                        HStack {
+                            Image(systemName: "clock.arrow.circlepath")
+                            Text("Fasting History")
+                        }
+                        .font(.headline)
+                        .foregroundColor(.blue)
+                    }
                 }
                 .padding(.bottom)
             }
             .onAppear {
                 viewStore.send(.loadInitialState)
+            }
+            .sheet(isPresented: viewStore.binding(get: \.showingGoalPicker, send: { _ in .goalPickerDismissed })) {
+                GoalPickerView(store: store)
             }
         }
     }
@@ -104,6 +140,18 @@ struct FastingView: View {
         formatter.unitsStyle = .positional
         
         return formatter.string(from: interval) ?? "00:00:00"
+    }
+    
+    // Helper function to format duration in a human-readable way
+    private func formatDuration(_ duration: TimeInterval) -> String {
+        let hours = Int(duration / 3600)
+        let minutes = Int((duration.truncatingRemainder(dividingBy: 3600)) / 60)
+        
+        if minutes == 0 {
+            return "\(hours) hours"
+        } else {
+            return "\(hours)h \(minutes)m"
+        }
     }
 }
 
