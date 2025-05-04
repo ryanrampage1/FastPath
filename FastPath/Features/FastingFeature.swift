@@ -122,16 +122,18 @@ struct FastingFeature {
             case .startFastButtonTapped:
                 let newRecord = FastingRecord(startTime: Date())
                 state.activeRecord = newRecord
-                
+                let goal = state.fastingGoal
+                let liveActivityEnabled = state.liveActivityEnabled
+
                 return .run { send in
                     try await databaseClient.save(newRecord)
                     await send(.fastingRecordSaved(newRecord))
-                    
+
                     // Start Live Activity if goal is set and Live Activities are enabled
-                    if let goal = state.fastingGoal, state.liveActivityEnabled {
+                    if let goal = goal, liveActivityEnabled {
                         await send(.startLiveActivity(newRecord, goal))
                     }
-                    
+
                     // Start timer
                     for await _ in self.clock.timer(interval: .seconds(1)) {
                         await send(.timerTick)
@@ -142,22 +144,23 @@ struct FastingFeature {
                 guard var record = state.activeRecord else { return .none }
                 record.endTime = Date()
                 state.activeRecord = nil
-                
+                let wasLiveActivityActive = state.hasActiveLiveActivity
+
                 return .run { send in
                     try await databaseClient.update(record)
                     await send(.fastingStopped(record))
-                    
-                    // Stop Live Activity if one is active
-                    if state.hasActiveLiveActivity {
+
+                    // Stop Live Activity if one was active
+                    if wasLiveActivityActive {
                         await send(.stopLiveActivity)
                     }
-                    
+
                     // Refresh history
                     let history = await databaseClient.getAllRecords()
                     await send(.fastingHistoryLoaded(history))
                 }
                 
-            case let .fastingRecordSaved(record):
+            case .fastingRecordSaved(let record):
                 // Update state if needed
                 if state.activeRecord?.id == record.id {
                     state.activeRecord = record
