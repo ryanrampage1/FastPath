@@ -16,6 +16,20 @@ struct HistoryView: View {
             List {
                 ForEach(viewStore.fastingHistory) { record in
                     FastingHistoryRow(record: record)
+                        .swipeActions(edge: .trailing) {
+                            Button(role: .destructive) {
+                                viewStore.send(.deleteRecordButtonTapped(record.id))
+                            } label: {
+                                Label("Delete", systemImage: "trash")
+                            }
+                        }
+                        .contextMenu {
+                            Button(role: .destructive) {
+                                viewStore.send(.deleteRecordButtonTapped(record.id))
+                            } label: {
+                                Label("Delete Record", systemImage: "trash")
+                            }
+                        }
                 }
                 
                 if viewStore.fastingHistory.isEmpty {

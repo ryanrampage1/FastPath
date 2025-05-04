@@ -30,6 +30,7 @@ struct FastingFeature {
         case startFastButtonTapped
         case stopFastButtonTapped
         case historyButtonTapped
+        case deleteRecordButtonTapped(UUID)
         
         // Internal actions
         case timerTick
@@ -38,6 +39,7 @@ struct FastingFeature {
         case activeRecordLoaded(FastingRecord?)
         case fastingRecordSaved(FastingRecord)
         case fastingStopped(FastingRecord)
+        case recordDeleted(UUID)
         
         // Navigation
         case showHistory
@@ -135,6 +137,21 @@ struct FastingFeature {
             case .historyButtonTapped:
                 return .send(.showHistory)
                 
+            case .deleteRecordButtonTapped(let recordId):
+                return .run { send in
+                    await databaseClient.delete(recordId)
+                    await send(.recordDeleted(recordId))
+                    
+                    // Refresh history after deletion
+                    let updatedHistory = await databaseClient.getAllRecords()
+                    await send(.fastingHistoryLoaded(updatedHistory))
+                }
+                
+            case .recordDeleted(let recordId):
+                // Remove the record from the local state
+                state.fastingHistory.removeAll(where: { $0.id == recordId })
+                return .none
+                
             case .showHistory:
                 // This will be handled by the parent reducer for navigation
                 return .none
@@ -157,6 +174,7 @@ extension DependencyValues {
 struct DatabaseClient {
     var save: @Sendable (FastingRecord) async throws -> Void
     var update: @Sendable (FastingRecord) async throws -> Void
+    var delete: @Sendable (UUID) async -> Void
     var getAllRecords: @Sendable () async -> [FastingRecord]
     var getActiveRecord: @Sendable () async -> FastingRecord?
     
@@ -166,6 +184,9 @@ struct DatabaseClient {
         },
         update: { record in
             try await DatabaseService.shared.update(record)
+        },
+        delete: { id in
+            await DatabaseService.shared.deleteRecord(withId: id)
         },
         getAllRecords: {
             await DatabaseService.shared.getAllRecords()
@@ -182,6 +203,7 @@ extension DatabaseClient: DependencyKey {
     static var testValue = Self(
         save: { _ in },
         update: { _ in },
+        delete: { _ in },
         getAllRecords: { [] },
         getActiveRecord: { nil }
     )

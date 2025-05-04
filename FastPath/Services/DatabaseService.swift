@@ -48,6 +48,13 @@ class DatabaseService {
         return records.first(where: { $0.endTime == nil })
     }
     
+    /// Delete a fasting record by ID
+    func deleteRecord(withId id: UUID) async {
+        var records = await getAllRecords()
+        records.removeAll(where: { $0.id == id })
+        saveAllRecords(records)
+    }
+    
     /// Private helper to save all records
     private func saveAllRecords(_ records: [FastingRecord]) {
         if let data = try? JSONEncoder().encode(records) {
