@@ -121,7 +121,20 @@ struct FastingView: View {
                         .foregroundColor(.blue)
                     }
                 }
-                .padding(.bottom)
+                .padding(.bottom, 8)
+                
+                // Live Activity toggle (iOS 16.1+ only)
+                if #available(iOS 16.1, *) {
+                    Toggle(isOn: viewStore.binding(get: \.liveActivityEnabled, send: { .toggleLiveActivity($0) })) {
+                        HStack {
+                            Image(systemName: "rectangle.inset.filled.and.person.filled")
+                            Text("Show in Dynamic Island")
+                            Spacer()
+                        }
+                    }
+                    .padding(.horizontal)
+                    .padding(.bottom)
+                }
             }
             .onAppear {
                 viewStore.send(.loadInitialState)
